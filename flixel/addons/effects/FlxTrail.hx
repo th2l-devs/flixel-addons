@@ -194,7 +194,6 @@ class FlxTrail extends #if (flixel < version("5.7.0")) FlxSpriteGroup #else FlxS
 			cacheValue(_recentFrames, target.animation.frameIndex);
 			cacheValue(_recentFlipX, target.flipX);
 			cacheValue(_recentFlipY, target.flipY);
-			cacheValue(_recentAnimations, target.animation.curAnim);
 		}
 	}
 	
@@ -227,7 +226,6 @@ class FlxTrail extends #if (flixel < version("5.7.0")) FlxSpriteGroup #else FlxS
 				trailSprite.flipX = _recentFlipX[i];
 				trailSprite.flipY = _recentFlipY[i];
 				
-				trailSprite.animation.curAnim = _recentAnimations[i];
 			}
 			
 			// Is the trailsprite even visible?
