@@ -48,6 +48,10 @@ class FlxBackdrop extends FlxSprite
 	 * @see flixel.addons.display.FlxBackDrop.BackdropBlitMode
 	 */
 	public var blitMode:BackdropBlitMode = AUTO;
+
+	public var autoScroll(default, null):FlxPoint = FlxPoint.get();
+
+	public var tileOffset(default, null):FlxPoint = FlxPoint.get();
 	
 	var _blitOffset:FlxPoint = FlxPoint.get();
 	var _blitGraphic:FlxGraphic = null;
@@ -84,6 +88,8 @@ class FlxBackdrop extends FlxSprite
 	override function destroy():Void
 	{
 		spacing = FlxDestroyUtil.put(spacing);
+		autoScroll = FlxDestroyUtil.put(autoScroll);
+		tileOffset = FlxDestroyUtil.put(tileOffset);
 		_blitOffset = FlxDestroyUtil.put(_blitOffset);
 		_blitGraphic = FlxDestroyUtil.destroy(_blitGraphic);
 		_tileMatrix = null;
@@ -91,6 +97,33 @@ class FlxBackdrop extends FlxSprite
 		super.destroy();
 	}
 	
+	override function update(elapsed:Float)
+	{
+		super.update(elapsed);
+		if (autoScroll.x != 0 || autoScroll.y != 0)
+		{
+			tileOffset.x += autoScroll.x * elapsed;
+			tileOffset.y += autoScroll.y * elapsed;
+		}
+		if (repeatAxes.x)
+			tileOffset.x = wrapOffset(tileOffset.x, (frameWidth + spacing.x) * scale.x);
+		if (repeatAxes.y)
+			tileOffset.y = wrapOffset(tileOffset.y, (frameHeight + spacing.y) * scale.y);
+	}
+
+	static inline function wrapOffset(value:Float, step:Float):Float
+	{
+		if (step <= 0)
+			return 0;
+		value = value % step;
+		return value > 0 ? value - step : value;
+	}
+
+	inline function isRotatedTiling():Bool
+	{
+		return !drawBlit && angle != 0 && bakedRotationAngle <= 0;
+	}
+
 	override function draw()
 	{
 		if (repeatAxes == NONE)
@@ -123,7 +156,9 @@ class FlxBackdrop extends FlxSprite
 			if (!camera.visible || !camera.exists || !isOnScreen(camera))
 				continue;
 
-			if (isSimpleRender(camera))
+			if (isRotatedTiling())
+				drawRotated(camera);
+			else if (isSimpleRender(camera))
 				drawSimple(camera);
 			else
 				drawComplex(camera);
@@ -151,8 +186,8 @@ class FlxBackdrop extends FlxSprite
 			camera = FlxG.camera;
 		
 		var bounds = getScreenBounds(_rect, camera);
-		if (repeatAxes.x) bounds.x = camera.viewMarginLeft;
-		if (repeatAxes.y) bounds.y = camera.viewMarginTop;
+		if (repeatAxes.x) bounds.x = camera.viewMarginLeft - camera.drawPadX;
+		if (repeatAxes.y) bounds.y = camera.viewMarginTop - camera.drawPadY;
 		
 		return camera.containsRect(bounds);
 	}
@@ -211,7 +246,7 @@ class FlxBackdrop extends FlxSprite
 		var tilesY = 1;
 		if (repeatAxes != NONE)
 		{
-			final viewMargins = camera.getViewMarginRect();
+			final viewMargins = camera.getViewDrawRect();
 			if (repeatAxes.x)
 			{
 				final left  = modMin(_point.x + frameWidth, tileSize.x, viewMargins.left) - frameWidth;
@@ -231,6 +266,10 @@ class FlxBackdrop extends FlxSprite
 			}
 			viewMargins.put();
 		}
+		if (repeatAxes.x)
+			_point.x += tileOffset.x;
+		if (repeatAxes.y)
+			_point.y += tileOffset.y;
 		
 		if (drawBlit)
 			_point.addPoint(_blitOffset);
@@ -316,7 +355,7 @@ class FlxBackdrop extends FlxSprite
 		var tilesY = 1;
 		if (repeatAxes != NONE)
 		{
-			final viewMargins = camera.getViewMarginRect();
+			final viewMargins = camera.getViewDrawRect();
 			final bounds = getScreenBounds(camera);
 			if (repeatAxes.x)
 			{
@@ -338,6 +377,10 @@ class FlxBackdrop extends FlxSprite
 			viewMargins.put();
 			bounds.put();
 		}
+		if (repeatAxes.x)
+			_point.x += tileOffset.x;
+		if (repeatAxes.y)
+			_point.y += tileOffset.y;
 		_point.addPoint(origin);
 		if (drawBlit)
 			_point.addPoint(_blitOffset);
@@ -373,6 +416,90 @@ class FlxBackdrop extends FlxSprite
 			camera.buffer.unlock();
 	}
 	
+	function drawRotated(camera:FlxCamera)
+	{
+		final frame = _frame;
+		frame.prepareMatrix(_matrix, FlxFrameAngle.ANGLE_0, checkFlipX(), checkFlipY());
+		_matrix.translate(-origin.x, -origin.y);
+		_matrix.scale(scale.x, scale.y);
+		updateTrig();
+		_matrix.rotateWithTrig(_cosAngle, _sinAngle);
+
+		final stepX = (frameWidth + spacing.x) * scale.x;
+		final stepY = (frameHeight + spacing.y) * scale.y;
+		final ax = stepX * _cosAngle;
+		final ay = stepX * _sinAngle;
+		final bx = -stepY * _sinAngle;
+		final by = stepY * _cosAngle;
+
+		getScreenPosition(_point, camera).subtractPoint(offset).addPoint(origin);
+		if (repeatAxes.x)
+		{
+			_point.x += tileOffset.x * _cosAngle;
+			_point.y += tileOffset.x * _sinAngle;
+		}
+		if (repeatAxes.y)
+		{
+			_point.x -= tileOffset.y * _sinAngle;
+			_point.y += tileOffset.y * _cosAngle;
+		}
+
+		var minA = 0.0, maxA = 0.0, minB = 0.0, maxB = 0.0;
+		final view = camera.getViewDrawRect();
+		for (k in 0...4)
+		{
+			final cx = ((k & 1) == 0 ? view.left : view.right) - _point.x;
+			final cy = ((k & 2) == 0 ? view.top : view.bottom) - _point.y;
+			final a = (cx * _cosAngle + cy * _sinAngle) / stepX;
+			final b = (cy * _cosAngle - cx * _sinAngle) / stepY;
+			if (k == 0 || a < minA) minA = a;
+			if (k == 0 || a > maxA) maxA = a;
+			if (k == 0 || b < minB) minB = b;
+			if (k == 0 || b > maxB) maxB = b;
+		}
+		view.put();
+
+		final i0 = repeatAxes.x ? Math.floor(minA) - 1 : 0;
+		final i1 = repeatAxes.x ? Math.ceil(maxA) + 1 : 0;
+		final j0 = repeatAxes.y ? Math.floor(minB) - 1 : 0;
+		final j1 = repeatAxes.y ? Math.ceil(maxB) + 1 : 0;
+
+		var drawItem = null;
+		if (FlxG.renderTile)
+		{
+			final isColored = (alpha != 1) || (color != 0xffffff);
+			final hasColorOffsets = (colorTransform != null && colorTransform.hasRGBAOffsets());
+			drawItem = camera.startQuadBatch(graphic, isColored, hasColorOffsets, blend, antialiasing, shader);
+		}
+		else
+		{
+			camera.buffer.lock();
+		}
+
+		for (i in i0...i1 + 1)
+		{
+			for (j in j0...j1 + 1)
+			{
+				_tileMatrix.copyFrom(_matrix);
+				_tileMatrix.translate(_point.x + ax * i + bx * j, _point.y + ay * i + by * j);
+
+				if (isPixelPerfectRender(camera))
+				{
+					_tileMatrix.tx = Math.floor(_tileMatrix.tx);
+					_tileMatrix.ty = Math.floor(_tileMatrix.ty);
+				}
+
+				if (FlxG.renderBlit)
+					camera.drawPixels(frame, framePixels, _tileMatrix, colorTransform, blend, antialiasing, shader);
+				else
+					drawItem.addQuad(frame, _tileMatrix, colorTransform);
+			}
+		}
+
+		if (FlxG.renderBlit)
+			camera.buffer.unlock();
+	}
+
 	function getFrameScreenBounds(camera:FlxCamera):FlxRect
 	{
 		if (drawBlit)
@@ -412,7 +539,7 @@ class FlxBackdrop extends FlxSprite
 			(frameHeight + spacing.y) * scale.y
 		);
 		
-		final viewMargins = camera.getViewMarginRect();
+		final viewMargins = camera.getViewDrawRect();
 		var tilesX = 1;
 		var tilesY = 1;
 		if (repeatAxes != NONE)
