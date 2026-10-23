@@ -266,10 +266,16 @@ class FlxBackdrop extends FlxSprite
 			}
 			viewMargins.put();
 		}
-		if (repeatAxes.x)
+		if (repeatAxes.x && tileOffset.x != 0)
+		{
 			_point.x += tileOffset.x;
-		if (repeatAxes.y)
+			tilesX++;
+		}
+		if (repeatAxes.y && tileOffset.y != 0)
+		{
 			_point.y += tileOffset.y;
+			tilesY++;
+		}
 		
 		if (drawBlit)
 			_point.addPoint(_blitOffset);
@@ -377,10 +383,16 @@ class FlxBackdrop extends FlxSprite
 			viewMargins.put();
 			bounds.put();
 		}
-		if (repeatAxes.x)
+		if (repeatAxes.x && tileOffset.x != 0)
+		{
 			_point.x += tileOffset.x;
-		if (repeatAxes.y)
+			tilesX++;
+		}
+		if (repeatAxes.y && tileOffset.y != 0)
+		{
 			_point.y += tileOffset.y;
+			tilesY++;
+		}
 		_point.addPoint(origin);
 		if (drawBlit)
 			_point.addPoint(_blitOffset);
