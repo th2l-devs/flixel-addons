@@ -106,9 +106,9 @@ class FlxBackdrop extends FlxSprite
 			tileOffset.y += autoScroll.y * elapsed;
 		}
 		if (repeatAxes.x)
-			tileOffset.x = wrapOffset(tileOffset.x, (frameWidth + spacing.x) * scale.x);
+			tileOffset.x = wrapOffset(tileOffset.x, (frameWidth + spacing.x) * Math.abs(scale.x));
 		if (repeatAxes.y)
-			tileOffset.y = wrapOffset(tileOffset.y, (frameHeight + spacing.y) * scale.y);
+			tileOffset.y = wrapOffset(tileOffset.y, (frameHeight + spacing.y) * Math.abs(scale.y));
 	}
 
 	static inline function wrapOffset(value:Float, step:Float):Float
@@ -357,6 +357,15 @@ class FlxBackdrop extends FlxSprite
 		}
 		
 		getScreenPosition(_point, camera).subtractPoint(offset);
+		if (drawDirect)
+		{
+			drawDirectTiles(camera, frame, drawItem);
+			tileSize.put();
+			if (FlxG.renderBlit)
+				camera.buffer.unlock();
+			return;
+		}
+		getScreenPosition(_point, camera).subtractPoint(offset);
 		var tilesX = 1;
 		var tilesY = 1;
 		if (repeatAxes != NONE)
@@ -428,6 +437,55 @@ class FlxBackdrop extends FlxSprite
 			camera.buffer.unlock();
 	}
 	
+	static inline final TILE_LIMIT:Int = 4096;
+
+	function drawDirectTiles(camera:FlxCamera, frame:FlxFrame, drawItem:Dynamic)
+	{
+		final view = camera.getViewDrawRect();
+		final bounds = getScreenBounds(camera);
+		final stepX = (frameWidth + spacing.x) * Math.abs(scale.x);
+		final stepY = (frameHeight + spacing.y) * Math.abs(scale.y);
+		final shiftX = repeatAxes.x ? tileOffset.x : 0.0;
+		final shiftY = repeatAxes.y ? tileOffset.y : 0.0;
+		var x0 = 0, x1 = 0, y0 = 0, y1 = 0;
+		if (repeatAxes.x && stepX > 0)
+		{
+			x0 = Math.floor((view.left - bounds.right - shiftX) / stepX);
+			x1 = Math.ceil((view.right - bounds.left - shiftX) / stepX);
+		}
+		if (repeatAxes.y && stepY > 0)
+		{
+			y0 = Math.floor((view.top - bounds.bottom - shiftY) / stepY);
+			y1 = Math.ceil((view.bottom - bounds.top - shiftY) / stepY);
+		}
+		view.put();
+		bounds.put();
+		if ((x1 - x0 + 1) * (y1 - y0 + 1) > TILE_LIMIT)
+			return;
+
+		_point.addPoint(origin);
+		final pixelPerfect = isPixelPerfectRender(camera);
+		for (ix in x0...x1 + 1)
+		{
+			for (iy in y0...y1 + 1)
+			{
+				_tileMatrix.copyFrom(_matrix);
+				_tileMatrix.translate(_point.x + shiftX + ix * stepX, _point.y + shiftY + iy * stepY);
+
+				if (pixelPerfect)
+				{
+					_tileMatrix.tx = Math.floor(_tileMatrix.tx);
+					_tileMatrix.ty = Math.floor(_tileMatrix.ty);
+				}
+
+				if (FlxG.renderBlit)
+					camera.drawPixels(frame, framePixels, _tileMatrix, colorTransform, blend, antialiasing, shader);
+				else
+					drawItem.addQuad(frame, _tileMatrix, colorTransform);
+			}
+		}
+	}
+
 	function drawRotated(camera:FlxCamera)
 	{
 		final frame = _frame;
